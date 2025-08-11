@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Explorers — Yes/No (Embedded bank + Score)</title>
+  <style>
+    :root{ --bg:#0f172a; --panel:#111827; --muted:#1f2937; --primary:#22d3ee; --accent:#a78bfa; --win:#10b981; --lose:#ef4444; --text:#e5e7eb; --sub:#9ca3af; }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(1200px 800px at 70% -10%, #1e293b 0%, var(--bg) 55%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    .wrap{max-width:960px;margin:0 auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .brand{display:flex;gap:10px;align-items:center}
+    .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--primary),var(--accent));display:grid;place-items:center;box-shadow:0 8px 30px rgba(164,123,255,.35);font-size:24px}
+    h1{margin:0;font-size:clamp(20px,3.2vw,30px)}
+    .sub{color:var(--sub);font-size:14px}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    select,input[type=number]{background:#0b1329;border:1px solid #142249;color:var(--text);padding:8px 10px;border-radius:10px}
+    button{background:linear-gradient(135deg,var(--primary),var(--accent));color:#081018;border:none;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(34,211,238,.25)}
+    button.ghost{background:transparent;border:1px solid #334155;color:var(--text)}
+    .panel{margin-top:14px;padding:14px;border:1px solid #142249;border-radius:14px;background:linear-gradient(180deg,#0a0f1f,#0b1226)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .timer{height:10px;background:#0e1730;border:1px solid #1d2c59;border-radius:999px;overflow:hidden}
+    .timer>div{height:100%;width:100%;background:linear-gradient(90deg,var(--accent),var(--primary))}
+    .question{font-size:20px;line-height:1.45;margin:8px 0}
+    .hint{background:#0e1730;border:1px dashed #334155;padding:10px;border-radius:10px;margin-top:8px;color:#cbd5e1;display:none}
+    .feedback{font-weight:800;margin-top:6px}
+    .feedback.ok{color:var(--win)} .feedback.bad{color:var(--lose)}
+    .score{font-weight:800}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .cat{background:#0b1226;border:1px solid #142249;border-radius:12px;padding:10px;cursor:pointer}
+    .cat .t{color:#cbd5e1;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo">🤖</div>
+        <div>
+          <h1>AI Explorers — Yes/No</h1>
+          <div class="sub">100 questions with hints, timer and score — embedded question bank</div>
+        </div>
+      </div>
+      <div class="controls">
+        <label>Time (sec): <input id="timerSec" type="number" min="10" max="180" value="45"></label>
+        <button id="newBtn" class="ghost">New question</button>
+        <button id="resetScore" class="ghost">Reset score</button>
+        <button id="exportBtn" class="ghost">Export (JSON)</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div>Score: <span id="score" class="score">0</span></div>
+        <div style="flex:1;max-width:420px" class="timer"><div id="timerFill"></div></div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div style="flex:2">
+          <div class="question" id="qText">Click “New question” to start.</div>
+          <div class="hint" id="hintBox"></div>
+          <div class="feedback" id="feedback"></div>
+        </div>
+        <div style="flex:1;display:grid;gap:8px;align-content:start">
+          <button id="yesBtn">Yes</button>
+          <button id="noBtn" class="ghost">No</button>
+          <button id="hintBtn" class="ghost">Hint</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div style="margin-bottom:6px">Topics (click to focus questions):</div>
+      <div class="grid" id="catGrid"></div>
+    </section>
+  </div>
+
+  <input id="activeCat" type="hidden" value="">
+  <script>
+    // ===== Embedded 100 Yes/No questions with explanations =====
+    const BANK = [
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Can a robot process information as if it 'thinks'?",
+    "answer": "yes",
+    "hint": "Machines don't think like humans, but they process data and follow algorithms to make decisions."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Does a machine have a real mind like the human brain?",
+    "answer": "no",
+    "hint": "The brain has neurons and consciousness; machines execute programs without self-awareness."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Is 'intelligence' in machines basically the ability to solve problems?",
+    "answer": "yes",
+    "hint": "In AI, intelligence often means solving problems or making predictions based on data and rules."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Does the brain work in the exact same way as a computer?",
+    "answer": "no",
+    "hint": "The brain is biological with neurons; a computer is electronic and runs binary instructions."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Do all video games use AI techniques?",
+    "answer": "yes",
+    "hint": "Even simple enemies or behavior patterns use rules/algorithms considered game AI techniques."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Can a machine 'see' objects in images?",
+    "answer": "yes",
+    "hint": "With computer vision, models recognize faces, objects and shapes in images and video."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Can machines learn new words from examples?",
+    "answer": "yes",
+    "hint": "Language models are trained on lots of text and learn statistical patterns of words."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Do robots truly understand jokes like humans do?",
+    "answer": "no",
+    "hint": "They can mimic humor from patterns but lack human context and emotion."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Without rules or data, can a machine decide what to do?",
+    "answer": "no",
+    "hint": "Machines need data, rules or goals to make decisions."
+  },
+  {
+    "cat": "What is Artificial Intelligence?",
+    "text": "Is machine learning a way for machines to improve from data?",
+    "answer": "yes",
+    "hint": "In ML, models train on data and improve their performance with experience."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Does my phone include features that use AI?",
+    "answer": "yes",
+    "hint": "Text suggestions, camera filters, voice assistants and smart notifications are examples of AI."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Can a 'smart' washing machine set its program by itself?",
+    "answer": "yes",
+    "hint": "It uses load/water sensors and control rules to adjust time and consumption."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Does a self-driving car always need a human driver to move?",
+    "answer": "no",
+    "hint": "The goal is autonomous driving with sensors and algorithms; today supervision is often required, but not constant driving."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Can a music app recommend songs I might like?",
+    "answer": "yes",
+    "hint": "Recommendation systems find patterns in your preferences and suggest similar tracks."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Do online shops use AI to recommend products?",
+    "answer": "yes",
+    "hint": "They analyze views and purchases to suggest items via recommendation algorithms."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Do game enemies make decisions using AI?",
+    "answer": "yes",
+    "hint": "Rules, search, and sometimes ML make opponents feel 'smart'."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Can AI create images from text descriptions?",
+    "answer": "yes",
+    "hint": "Generative image models learn from large datasets and render images from text prompts."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Is it already common for robots to cook entire meals at home by themselves today?",
+    "answer": "no",
+    "hint": "There are prototypes/industrial robots, but fully autonomous home cooking isn't common yet."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Is AI used in medicine for diagnoses and decision support?",
+    "answer": "yes",
+    "hint": "AI analyzes images, signals and records to support decisions — with physicians remaining responsible."
+  },
+  {
+    "cat": "AI in Everyday Life",
+    "text": "Is ChatGPT an example of Artificial Intelligence?",
+    "answer": "yes",
+    "hint": "It's a language model trained on a lot of text that answers in natural language."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Can a robot feel real love?",
+    "answer": "no",
+    "hint": "Robots have no consciousness or feelings; they only simulate behaviors."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Can a robot truly get angry?",
+    "answer": "no",
+    "hint": "Its reactions are programmed; there are no inner feelings."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Is the programmer always responsible when an AI makes a mistake?",
+    "answer": "no",
+    "hint": "Responsibility can be shared among a team, organization and users; we need rules and safety checks."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Should we be polite to a machine (e.g., say 'please')?",
+    "answer": "yes",
+    "hint": "It doesn't understand politeness, but practicing respectful language is a good classroom habit."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Is it acceptable for a machine to lie?",
+    "answer": "no",
+    "hint": "Misinformation is harmful; we want transparency, oversight and responsible use."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Can a robot say 'I don't want to' with its own will?",
+    "answer": "no",
+    "hint": "It has no desires; it follows goals/instructions we give it."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Should robots have legal rights like humans?",
+    "answer": "no",
+    "hint": "Rights apply to conscious persons; for robots we focus on safe, responsible frameworks."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Can an AI have its own personality?",
+    "answer": "no",
+    "hint": "It can simulate style/voice, but has no inner identity or consciousness."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Can a robot be a real friend like a human?",
+    "answer": "no",
+    "hint": "It can provide companionship, but lacks reciprocity and deep human understanding."
+  },
+  {
+    "cat": "Ethics & Emotions",
+    "text": "Can a machine feel sad?",
+    "answer": "no",
+    "hint": "It doesn't have emotional states — only programmed responses."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Did people imagine AI before computers were built?",
+    "answer": "yes",
+    "hint": "Myths and ideas about artificial beings exist since antiquity and in philosophy."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Was the first robot in antiquity like modern robots?",
+    "answer": "no",
+    "hint": "There were automata/mechanisms, not robots with computers and algorithms like today."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Did Alan Turing introduce ideas that laid foundations for AI?",
+    "answer": "yes",
+    "hint": "Turing proposed models of computation and the famous test for machine intelligence."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Were there real robots in ancient Greece?",
+    "answer": "no",
+    "hint": "There were mechanical automata and myths like Talos, not modern robots."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Has science fiction influenced the development of AI?",
+    "answer": "yes",
+    "hint": "Sci‑fi works inspired ideas and guided research and ethics discussions."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Do scientists test AI performance with evaluations?",
+    "answer": "yes",
+    "hint": "They use benchmark datasets and metrics to check accuracy and safety."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Is there a single country that uses AI the most in every field?",
+    "answer": "no",
+    "hint": "Use varies by sector and country; there's no one champion for everything."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Do you need math/computer science studies to build AI?",
+    "answer": "yes",
+    "hint": "Helpful skills: programming, algebra, probability, data and tech ethics."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Has AI significantly changed the world in recent years?",
+    "answer": "yes",
+    "hint": "AI impacts medicine, communication, art, industry and education."
+  },
+  {
+    "cat": "History & Science of AI",
+    "text": "Can AI help with space missions?",
+    "answer": "yes",
+    "hint": "It's used for navigation, planetary image analysis and robotic exploration."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Can a machine predict future trends from data?",
+    "answer": "yes",
+    "hint": "It makes probabilistic forecasts; it's not a 'prophet' but estimates based on patterns."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Will AI get magical powers like in stories?",
+    "answer": "no",
+    "hint": "AI is technology, not magic — it relies on data and physical laws."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Is it realistic for AI to rule the world in the near future?",
+    "answer": "no",
+    "hint": "Governance is political/social; AI is a tool assisting people."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Could an AI hero help people during disasters?",
+    "answer": "yes",
+    "hint": "Detection/prediction systems and rescue robots can support first responders."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Is a world with only robots and no humans likely?",
+    "answer": "no",
+    "hint": "Society is built by people; robots are tools that serve our needs."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Can we become 'half human, half robot' with implants?",
+    "answer": "yes",
+    "hint": "Medical implants/prosthetics already extend abilities — they assist rather than make us robots."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Will robots teach alongside teachers in the future?",
+    "answer": "yes",
+    "hint": "Robots/software can support teachers, not replace them."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Can a robot build another robot?",
+    "answer": "yes",
+    "hint": "Assembly lines with robotic arms already assemble robots/devices."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Will families have household robot helpers?",
+    "answer": "yes",
+    "hint": "Cleaning robots exist; more household tasks will be automated in the future."
+  },
+  {
+    "cat": "Imaginary & Future Questions",
+    "text": "Can we live in harmony with AI through rules and education?",
+    "answer": "yes",
+    "hint": "Responsible use, transparency and education support safe coexistence."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Can AI imitate the style of painters like Van Gogh?",
+    "answer": "yes",
+    "hint": "Generative models learn from artworks and produce images in similar styles."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Have film directors used AI in movies?",
+    "answer": "yes",
+    "hint": "AI helps with visual effects, editing, restoration and production tasks."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Can a machine compose music?",
+    "answer": "yes",
+    "hint": "Models learn structures/patterns and generate new pieces."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Do AI tools create images from text?",
+    "answer": "yes",
+    "hint": "Text‑to‑image models render scenes from written descriptions."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Can AI write a poem?",
+    "answer": "yes",
+    "hint": "Language models produce verse by imitating patterns from many examples."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Can a robot perform a role on stage?",
+    "answer": "yes",
+    "hint": "It can deliver lines/movements; the interpretation lacks human consciousness."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Will AI ever write a 'perfect' fairy tale that everyone loves?",
+    "answer": "no",
+    "hint": "Art is subjective; no story pleases literally everyone."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Should we call a machine an 'artist' in the human sense?",
+    "answer": "no",
+    "hint": "It can produce works, but lacks human intent and consciousness as an author."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Can AI generate original soundscapes?",
+    "answer": "yes",
+    "hint": "It combines sounds/patterns to create new compositions, based on training."
+  },
+  {
+    "cat": "AI & Art",
+    "text": "Can AI make a whole video game without any human help?",
+    "answer": "no",
+    "hint": "It can assist with graphics/ideas/code, but human design and quality control are usually needed."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI help reduce pollution?",
+    "answer": "yes",
+    "hint": "It analyzes pollution data and suggests better practices, routes and policies."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI automatically control plant watering?",
+    "answer": "yes",
+    "hint": "Moisture sensors and algorithms decide when watering is needed."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Is AI used to detect wildlife in nature?",
+    "answer": "yes",
+    "hint": "Cameras and models detect and identify species for protection."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI forecast the weather?",
+    "answer": "yes",
+    "hint": "Weather models combine historical and current data for predictions."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI keep cities clean without any people?",
+    "answer": "no",
+    "hint": "It helps plan/monitor, but human work and infrastructure are still required."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI help protect the oceans?",
+    "answer": "yes",
+    "hint": "It detects pollution/illegal fishing and optimizes cleanup efforts."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Is AI useful for early wildfire detection?",
+    "answer": "yes",
+    "hint": "It analyzes satellite/sensor data to raise early alarms."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI organize recycling perfectly with zero errors?",
+    "answer": "no",
+    "hint": "It improves sorting and routing, but cannot completely eliminate mistakes or human factors."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Can AI make energy 'smarter'?",
+    "answer": "yes",
+    "hint": "It manages demand/production, storage and grids for better efficiency."
+  },
+  {
+    "cat": "AI & the Environment",
+    "text": "Does AI run ecological experiments entirely alone without scientists?",
+    "answer": "no",
+    "hint": "It supports design/analysis, but experiments need human oversight."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Does AI help students at school?",
+    "answer": "yes",
+    "hint": "It personalizes exercises, gives feedback and supports teachers."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Can AI read a book aloud to me?",
+    "answer": "yes",
+    "hint": "Text‑to‑speech systems convert text into spoken voice."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Can AI help students with learning difficulties?",
+    "answer": "yes",
+    "hint": "Accessibility and personalization tools adapt to student needs."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Can AI design an entire lesson all by itself without a teacher?",
+    "answer": "no",
+    "hint": "It can suggest materials, but teachers set goals, context and evaluation."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Will there be 'smart' boards that sense touch and capture notes?",
+    "answer": "yes",
+    "hint": "Interactive boards already exist and are improving."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Will we learn about AI in future schools?",
+    "answer": "yes",
+    "hint": "Digital literacy includes AI concepts, data and responsible use."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Can AI grade tests 100% perfectly every time?",
+    "answer": "no",
+    "hint": "It helps with grading, but human review is needed for fairness."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Can a robot conduct an oral exam entirely on its own?",
+    "answer": "no",
+    "hint": "It can participate, but final evaluation needs human pedagogical judgment."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Does AI make classes more fun for everyone?",
+    "answer": "yes",
+    "hint": "Interactive tools and adaptive content increase engagement."
+  },
+  {
+    "cat": "Education & Learning",
+    "text": "Does AI support learning around the world?",
+    "answer": "yes",
+    "hint": "Online tools reduce access barriers and personalize learning globally."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Will AI replace all humans at work?",
+    "answer": "no",
+    "hint": "Roles and tasks will change, but people remain essential in many jobs."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Is AI dangerous like in sci‑fi movies?",
+    "answer": "no",
+    "hint": "Risks are real but different: bias, privacy, safety — not movie monsters."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Will robots revolt like in the stories?",
+    "answer": "no",
+    "hint": "That's fiction; robots have no intentions or plans."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Can AI become smarter than humans at everything today?",
+    "answer": "no",
+    "hint": "AI is specialized in specific tasks; humans excel at general intelligence."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Can technology track our movements?",
+    "answer": "yes",
+    "hint": "Tracking and analytics systems exist; laws and consent protect privacy."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Is AI 'magic' instead of science?",
+    "answer": "no",
+    "hint": "AI is math and algorithms — no magic involved."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Can AI make us forget who we are?",
+    "answer": "no",
+    "hint": "AI may influence habits, but identity and values are human choices."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Does AI always require a lot of energy to work?",
+    "answer": "yes",
+    "hint": "Training large models consumes energy; we work to improve efficiency."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Can AI make mistakes like humans?",
+    "answer": "yes",
+    "hint": "Yes — especially with limited or biased data, so oversight is needed."
+  },
+  {
+    "cat": "Fears & Myths",
+    "text": "Are there things AI simply should not do?",
+    "answer": "yes",
+    "hint": "We need boundaries: rights, safety, transparency and human oversight."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI combine ideas and suggest something new?",
+    "answer": "yes",
+    "hint": "It blends knowledge/patterns and proposes novel ideas within its training limits."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI create an entirely fictional world?",
+    "answer": "yes",
+    "hint": "It can generate descriptions, images and game rules, though based on what it learned."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "If we ask, can AI design a simple tool?",
+    "answer": "yes",
+    "hint": "It can output sketches/code/material lists for simple projects — humans review and refine."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI write a text like a 'life story'?",
+    "answer": "yes",
+    "hint": "It can compose narratives from given facts and style — still without personal experience."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI write short texts about the universe?",
+    "answer": "yes",
+    "hint": "It produces informative or imaginative texts by combining learned knowledge."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI help a space mission with ideas or analysis?",
+    "answer": "yes",
+    "hint": "It analyzes data, optimizes routes and spots patterns in measurements."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI create new myths and fairy tales?",
+    "answer": "yes",
+    "hint": "It mixes storytelling patterns to create original tales."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI write dialogue for theatre roles?",
+    "answer": "yes",
+    "hint": "It generates conversations in specific genres and styles."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI truly 'imagine' like a human?",
+    "answer": "no",
+    "hint": "It creates outputs from patterns, but lacks personal experience or imagination."
+  },
+  {
+    "cat": "Imagination & Creativity",
+    "text": "Can AI dream?",
+    "answer": "no",
+    "hint": "It has no sleep or consciousness; ‘dreaming’ is only a metaphor for generating samples."
+  }
+];
+
+    // ===== Unique topics from bank =====
+    const CATS = [...new Set(BANK.map(x => x.cat))];
+
+    // ===== UI refs =====
+    const qText = document.getElementById('qText');
+    const hintBox = document.getElementById('hintBox');
+    const yesBtn = document.getElementById('yesBtn');
+    const noBtn = document.getElementById('noBtn');
+    const hintBtn = document.getElementById('hintBtn');
+    const newBtn = document.getElementById('newBtn');
+    const resetScoreBtn = document.getElementById('resetScore');
+    const timerFill = document.getElementById('timerFill');
+    const timerSec = document.getElementById('timerSec');
+    const scoreEl = document.getElementById('score');
+    const feedback = document.getElementById('feedback');
+    const catGrid = document.getElementById('catGrid');
+    const activeCat = document.getElementById('activeCat');
+    const exportBtn = document.getElementById('exportBtn');
+
+    // ===== State =====
+    let current = null, baseSeconds = +timerSec.value || 45, timeLeft = baseSeconds, timer=null, score=0;
+
+    // ===== Topics =====
+    function renderCats(){
+      catGrid.innerHTML='';
+      CATS.forEach(name=>{
+        const div = document.createElement('div');
+        div.className='cat';
+        div.innerHTML = `<div class="t">${name}</div>`;
+        div.addEventListener('click', ()=>{
+          activeCat.value = (activeCat.value===name ? '' : name);
+          catGrid.querySelectorAll('.cat').forEach(c=>c.style.borderColor='#142249');
+          if(activeCat.value===name) div.style.borderColor='var(--accent)';
+        });
+        catGrid.appendChild(div);
+      });
+    }
+
+    // ===== New question =====
+    function nextQuestion(){
+      const secs = Math.max(10, Math.min(180, +timerSec.value||45));
+      baseSeconds = secs;
+      const pool = activeCat.value ? BANK.filter(x=>x.cat===activeCat.value) : BANK;
+      current = pool[Math.floor(Math.random()*pool.length)];
+      qText.textContent = current.text;
+      feedback.textContent='';
+      hintBox.style.display='none';
+      hintBox.textContent = current.hint || '';
+      // timer
+      stopTimer();
+      timeLeft = baseSeconds;
+      timerFill.style.width='100%';
+      timer = setInterval(()=>{
+        timeLeft -= 1;
+        timerFill.style.width = Math.max(0, Math.round((timeLeft/baseSeconds)*100))+'%';
+        if(timeLeft<=0){ stopTimer(); feedback.textContent='⏱️ Time’s up!'; feedback.className='feedback bad'; }
+      }, 1000);
+    }
+    function stopTimer(){ if(timer){ clearInterval(timer); timer=null; }}
+
+    // ===== Check answer =====
+    function check(ans){
+      if(!current) return;
+      const ok = ans===current.answer;
+      feedback.textContent = ok ? '✅ Correct!' : `❌ Wrong. Correct: ${current.answer==='yes'?'Yes':'No'}.`;
+      feedback.className = 'feedback ' + (ok?'ok':'bad');
+      if(ok){ score++; scoreEl.textContent = score; }
+      stopTimer();
+    }
+
+    // ===== Handlers =====
+    yesBtn.addEventListener('click', ()=>check('yes'));
+    noBtn.addEventListener('click', ()=>check('no'));
+    hintBtn.addEventListener('click', ()=>{ if(!current) return; hintBox.style.display = hintBox.style.display==='none'?'block':'none'; });
+    newBtn.addEventListener('click', nextQuestion);
+    resetScoreBtn.addEventListener('click', ()=>{ score=0; scoreEl.textContent=score; });
+    timerSec.addEventListener('input', ()=>{ const v = Math.max(10, Math.min(180, +timerSec.value||45)); timerSec.value = v; });
+
+    // ===== Export bank =====
+    exportBtn.addEventListener('click', ()=>{
+      const data = JSON.stringify(BANK, null, 2);
+      const blob = new Blob([data], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='ai_yesno_bank_en_embedded.json'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    // Init
+    renderCats();
+  </script>
+</body>
+</html>
